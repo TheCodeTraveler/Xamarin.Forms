@@ -89,6 +89,12 @@ namespace Xamarin.Forms.Platform.Tizen
 			return Forms.ConvertToDPFont(pt);
 		}
 
+		public Color GetNamedColor(string name)
+		{
+			// Not supported on this platform
+			return Color.Default;
+		}
+
 		public void OpenUriAction(Uri uri)
 		{
 			if (uri == null || uri.AbsoluteUri == null)
@@ -274,6 +280,12 @@ namespace Xamarin.Forms.Platform.Tizen
 		{
 			return Platform.GetNativeSize(view, widthConstraint, heightConstraint);
 		}
+
+		public OSAppTheme RequestedTheme => OSAppTheme.Unspecified;
+
+		static MD5 CreateChecksum()
+		{
+			return MD5.Create();
+		}
 	}
 }
-

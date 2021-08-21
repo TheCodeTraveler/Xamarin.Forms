@@ -328,9 +328,9 @@ namespace Xamarin.Forms.Platform.UWP
 			}
 		}
 
-		async void OnBackClicked(object sender, RoutedEventArgs e)
+		void OnBackClicked(object sender, RoutedEventArgs e)
 		{
-			await Element.PopAsync();
+			Element?.SendBackButtonPressed();
 		}
 
 		void OnChildrenChanged(object sender, NotifyCollectionChangedEventArgs e)
@@ -453,7 +453,10 @@ namespace Xamarin.Forms.Platform.UWP
 			if (_currentPage != null)
 			{
 				if (isPopping)
+				{
 					_currentPage.Cleanup();
+					_container.TitleView?.Cleanup();
+				}
 
 				_container.Content = null;
 				_currentPage.PropertyChanged -= OnCurrentPagePropertyChanged;

@@ -40,7 +40,7 @@ namespace Xamarin.Forms.Platform.iOS
 			{
 				if (!ViewControllers.Any())
 					return;
-				var parentingViewController = (ParentingViewController)ViewControllers.Last();
+				var parentingViewController = GetParentingViewController();
 				parentingViewController?.UpdateLeftBarButtonItem();
 			});
 		}
@@ -97,7 +97,7 @@ namespace Xamarin.Forms.Platform.iOS
 
 			View.SetNeedsLayout();
 
-			var parentingViewController = (ParentingViewController)ViewControllers.Last();
+			var parentingViewController = GetParentingViewController();
 			parentingViewController?.UpdateLeftBarButtonItem();
 		}
 
@@ -148,6 +148,9 @@ namespace Xamarin.Forms.Platform.iOS
 			base.ViewWillAppear(animated);
 
 			SetStatusBarStyle();
+
+			if (Forms.IsiOS13OrNewer)
+				UpdateBarBackgroundColor();
 		}
 
 		public override void ViewDidDisappear(bool animated)
@@ -229,8 +232,9 @@ namespace Xamarin.Forms.Platform.iOS
 			UpdateTint();
 			UpdateBarBackgroundColor();
 			UpdateBarTextColor();
-			UpdateUseLargeTitles();
 			UpdateHideNavigationBarSeparator();
+			UpdateUseLargeTitles();
+
 			if (Forms.RespondsToSetNeedsUpdateOfHomeIndicatorAutoHidden)
 				SetNeedsUpdateOfHomeIndicatorAutoHidden();
 
@@ -363,7 +367,7 @@ namespace Xamarin.Forms.Platform.iOS
 			base.TraitCollectionDidChange(previousTraitCollection);
 #if __XCODE11__
 			// Make sure the control adheres to changes in UI theme
-			if (previousTraitCollection?.UserInterfaceStyle != TraitCollection.UserInterfaceStyle)
+			if (Forms.IsiOS13OrNewer && previousTraitCollection?.UserInterfaceStyle != TraitCollection.UserInterfaceStyle)
 				UpdateBackgroundColor();
 #endif
 		}
@@ -386,6 +390,14 @@ namespace Xamarin.Forms.Platform.iOS
 			pageRenderer.ViewController.DidMoveToParentViewController(pack);
 
 			return pack;
+		}
+
+		ParentingViewController GetParentingViewController()
+		{
+			if (!ViewControllers.Any())
+				return null;
+
+			return ViewControllers.Last() as ParentingViewController;
 		}
 
 		void FindParentMasterDetail()
@@ -624,7 +636,7 @@ namespace Xamarin.Forms.Platform.iOS
 				ViewControllers = _removeControllers;
 			}
 			target.Dispose();
-			var parentingViewController = ViewControllers.Last() as ParentingViewController;
+			var parentingViewController = GetParentingViewController();
 			parentingViewController?.UpdateLeftBarButtonItem(page);
 		}
 
@@ -665,7 +677,13 @@ namespace Xamarin.Forms.Platform.iOS
 				var navigationBarAppearance = NavigationBar.StandardAppearance;
 
 				if (barBackgroundColor == Color.Default)
+				{
 					navigationBarAppearance.ConfigureWithDefaultBackground();
+					navigationBarAppearance.BackgroundColor = null;
+
+					var parentingViewController = GetParentingViewController();
+					parentingViewController?.SetupDefaultNavigationBarAppearance();
+				}
 				else
 				{
 					navigationBarAppearance.ConfigureWithOpaqueBackground();
@@ -758,7 +776,7 @@ namespace Xamarin.Forms.Platform.iOS
 				else
 #endif
 				{
-						UIApplication.SharedApplication.StatusBarStyle = UIStatusBarStyle.Default;
+					UIApplication.SharedApplication.StatusBarStyle = UIStatusBarStyle.Default;
 				}
 			}
 			else
@@ -1078,6 +1096,7 @@ namespace Xamarin.Forms.Platform.iOS
 
 			public override void ViewWillAppear(bool animated)
 			{
+				SetupDefaultNavigationBarAppearance();
 				UpdateNavigationBarVisibility(animated);
 
 				NavigationRenderer n;
@@ -1110,6 +1129,12 @@ namespace Xamarin.Forms.Platform.iOS
 					_tracker.Target = null;
 					_tracker.CollectionChanged -= TrackerOnCollectionChanged;
 					_tracker = null;
+
+					if (NavigationItem.TitleView != null)
+					{
+						NavigationItem.TitleView.Dispose();
+						NavigationItem.TitleView = null;
+					}
 
 					if (NavigationItem.RightBarButtonItems != null)
 					{
@@ -1146,6 +1171,73 @@ namespace Xamarin.Forms.Platform.iOS
 					UpdateIconColor();
 			}
 
+			internal void SetupDefaultNavigationBarAppearance()
+			{
+				if (!Forms.IsiOS13OrNewer)
+					return;
+
+				if (!_navigation.TryGetTarget(out NavigationRenderer navigationRenderer))
+					return;
+
+#if __XCODE11__
+
+				// We will use UINavigationBar.Appareance to infer settings that
+				// were already set to navigation bar in older versions of
+				// iOS.
+				var navBar = navigationRenderer.NavigationBar;
+				var navAppearance = navBar.StandardAppearance;
+
+				if (navAppearance.BackgroundColor == null)
+				{
+					var backgroundColor = navBar.BarTintColor;
+					navBar.CompactAppearance.BackgroundColor = navBar.StandardAppearance.BackgroundColor = navBar.ScrollEdgeAppearance.BackgroundColor = backgroundColor;
+				}
+
+				if (navAppearance.BackgroundImage == null)
+				{
+					var backgroundImage = navBar.GetBackgroundImage(UIBarMetrics.Default);
+					navBar.CompactAppearance.BackgroundImage = navBar.StandardAppearance.BackgroundImage = navBar.ScrollEdgeAppearance.BackgroundImage = backgroundImage;
+				}
+
+				if (navAppearance.ShadowImage == null)
+				{
+					var shadowImage = navBar.ShadowImage;
+					navBar.CompactAppearance.ShadowImage = navBar.StandardAppearance.ShadowImage = navBar.ScrollEdgeAppearance.ShadowImage = shadowImage;
+
+					if (shadowImage != null && shadowImage.Size == SizeF.Empty)
+						navBar.CompactAppearance.ShadowColor = navBar.StandardAppearance.ShadowColor = navBar.ScrollEdgeAppearance.ShadowColor = UIColor.Clear;
+				}
+
+				UIImage backIndicatorImage = navBar.BackIndicatorImage;
+				UIImage backIndicatorTransitionMaskImage = navBar.BackIndicatorTransitionMaskImage;
+
+				if (backIndicatorImage != null && backIndicatorImage.Size == SizeF.Empty)
+					backIndicatorImage = GetEmptyBackIndicatorImage();
+
+				if (backIndicatorTransitionMaskImage != null && backIndicatorTransitionMaskImage.Size == SizeF.Empty)
+					backIndicatorTransitionMaskImage = GetEmptyBackIndicatorImage();
+
+				navBar.CompactAppearance.SetBackIndicatorImage(backIndicatorImage, backIndicatorTransitionMaskImage);
+				navBar.StandardAppearance.SetBackIndicatorImage(backIndicatorImage, backIndicatorTransitionMaskImage);
+				navBar.ScrollEdgeAppearance.SetBackIndicatorImage(backIndicatorImage, backIndicatorTransitionMaskImage);
+#endif
+			}
+
+			UIImage GetEmptyBackIndicatorImage()
+			{
+				var rect = RectangleF.Empty;
+				var size = rect.Size;
+
+				UIGraphics.BeginImageContext(size);
+				var context = UIGraphics.GetCurrentContext();
+				context?.SetFillColor(1, 1, 1, 0);
+				context?.FillRect(rect);
+
+				var empty = UIGraphics.GetImageFromCurrentImageContext();
+				context?.Dispose();
+
+				return empty;
+			}
 
 			internal void UpdateLeftBarButtonItem(Page pageBeingRemoved = null)
 			{

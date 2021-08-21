@@ -25,15 +25,18 @@ namespace Xamarin.Forms.Platform.iOS
 				if (Element != null && Element.IsRefreshing != _isRefreshing)
 					Element.SetValueFromRenderer(RefreshView.IsRefreshingProperty, _isRefreshing);
 
-
 				if (_isRefreshing != _refreshControl.Refreshing)
 				{
 					if (_isRefreshing)
+					{
+						TryOffsetRefresh(this, IsRefreshing);
 						_refreshControl.BeginRefreshing();
+					}
 					else
+					{
 						_refreshControl.EndRefreshing();
-
-					TryOffsetRefresh(this, IsRefreshing);
+						TryOffsetRefresh(this, IsRefreshing);
+					}
 				}
 			}
 		}
@@ -68,8 +71,8 @@ namespace Xamarin.Forms.Platform.iOS
 			}
 
 			UpdateColors();
-			UpdateIsRefreshing();
 			UpdateIsEnabled();
+			UpdateIsRefreshing();
 		}
 
 		protected override void OnElementPropertyChanged(object sender, PropertyChangedEventArgs e)
@@ -142,6 +145,34 @@ namespace Xamarin.Forms.Platform.iOS
 			return false;
 		}
 
+		bool TryRemoveRefresh(UIView view, int index = 0)
+		{
+			_refreshControlParent = view;
+
+			if (_refreshControl.Superview != null)
+				_refreshControl.RemoveFromSuperview();
+
+			if (view is UIScrollView scrollView)
+			{
+				if (CanUseRefreshControlProperty())
+					scrollView.RefreshControl = null;
+
+				return true;
+			}
+
+			if (view.Subviews == null)
+				return false;
+
+			for (int i = 0; i < view.Subviews.Length; i++)
+			{
+				var control = view.Subviews[i];
+				if (TryRemoveRefresh(control, i))
+					return true;
+			}
+
+			return false;
+		}
+
 		bool TryInsertRefresh(UIView view, int index = 0)
 		{
 			_refreshControlParent = view;
@@ -198,13 +229,20 @@ namespace Xamarin.Forms.Platform.iOS
 
 		void UpdateIsEnabled()
 		{
-			if (Element.IsEnabled)
+			bool isRefreshViewEnabled = Element.IsEnabled;
+			_refreshControl.Enabled = isRefreshViewEnabled;
+
+			UserInteractionEnabled = true;
+
+			if (IsRefreshing)
+				return;
+
+			if (isRefreshViewEnabled)
 				TryInsertRefresh(_refreshControlParent);
 			else
-			{
-				if (_refreshControl.Superview != null)
-					_refreshControl.RemoveFromSuperview();
-			}
+				TryRemoveRefresh(_refreshControlParent);
+
+			UserInteractionEnabled = true;
 		}
 
 		bool CanUseRefreshControlProperty()
